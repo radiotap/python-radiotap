@@ -200,9 +200,11 @@ def radiotap_parse(packet):
     count = 1
     offset = radiotap_header_len
     while present & (1 << (32 * count - 1)):
-        next_present = struct.unpack_from("<I", packet[offset:])
-        present |= next_present
+        present &= ~(1 << (32 * count - 1))
+        next_present, = struct.unpack_from("<I", packet[offset:])
+        present |= next_present << (32 * count)
         offset += 4
+        count += 1
 
     radiotap = {}
     for i in range(0, 32 * count):
