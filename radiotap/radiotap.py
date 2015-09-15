@@ -219,22 +219,108 @@ def radiotap_parse(packet):
 def macstr(macbytes):
     return ':'.join(['%02x' % ord(k) for k in macbytes])
 
+def is_blkack(mac):
+    fc = mac.get('fc', 0)
+    type = (fc >> 2) & 0x3
+    subtype = (fc >> 4) & 0x0f;
+
+    # control frame and block ack
+    return type == 1 and subtype == 0x9
+
+def is_qos_data(mac):
+    fc = mac.get('fc', 0)
+    type = (fc >> 2) & 0x3
+    subtype = (fc >> 4) & 0x0f;
+
+    return type == 2 and subtype == 0x8
+
+def is_qos_null(mac):
+    fc = mac.get('fc', 0)
+    type = (fc >> 2) & 0x3
+    subtype = (fc >> 4) & 0x0f;
+
+    return type == 2 and subtype == 0xc
+
+def is_qos(mac):
+    return is_qos_null(mac) or is_qos_data(mac)
+
 def ieee80211_parse(packet, offset):
-    hdr_fmt = "<HH6s6s6sH"
+    hdr_fmt = "<HH6s"
     hdr_len = struct.calcsize(hdr_fmt)
 
     if len(packet) - offset < hdr_len:
         return 0, {}
 
-    fc, duration, addr1, addr2, addr3, seq = \
+    fc, duration, addr1 = \
         struct.unpack_from(hdr_fmt, packet, offset)
 
-    return hdr_len, {
+    offset += hdr_len
+    mac = {
         'fc': fc,
         'duration': duration * .001024,
         'addr1': macstr(addr1),
+    }
+
+    if is_blkack(mac):
+        blkack_fmt = "<6sHH8s"
+        blkack_len = struct.calcsize(blkack_fmt)
+        if len(packet) - offset < blkack_len:
+            return offset, mac
+
+        addr2, ba_ctrl, ba_ssc, ba_bitmap = \
+            struct.unpack_from(blkack_fmt, packet, offset)
+        offset += blkack_len
+        mac.update({
+            'addr2': macstr(addr2),
+            'ba_ctrl': ba_ctrl,
+            'ba_ssc': ba_ssc,
+            'ba_bitmap': ba_bitmap
+        })
+        return offset, mac
+
+    three_addr_fmt = "<6s6sH"
+    three_addr_len = struct.calcsize(three_addr_fmt)
+    if len(packet) - offset < three_addr_len:
+        return offset, mac
+
+    addr2, addr3, seq = \
+        struct.unpack_from(three_addr_fmt, packet, offset)
+    offset += three_addr_len
+    mac.update({
         'addr2': macstr(addr2),
         'addr3': macstr(addr3),
         'seq': seq >> 4,
         'frag': seq & 3
-    }
+    })
+
+    if is_qos(mac):
+        four_addr_fmt = "<6s"
+        four_addr_len = struct.calcsize(four_addr_fmt)
+        if len(packet) - offset < four_addr_len:
+            return offset, mac
+
+        addr4, = struct.unpack_from(four_addr_fmt, packet, offset)
+        offset += four_addr_len
+        mac.update({
+            'addr4': macstr(addr4)
+        })
+
+        qos_ctrl_fmt = "<H"
+        qos_ctrl_len = struct.calcsize(qos_ctrl_fmt)
+        if len(packet) - offset < qos_ctrl_len:
+            return offset, mac
+
+        qos_ctrl, = struct.unpack_from(qos_ctrl_fmt, packet, offset)
+        tid = qos_ctrl & 0xf
+        eosp = (qos_ctrl >> 4) & 1
+        mesh_ps = (qos_ctrl >> 9) & 1
+        rspi = (qos_ctrl >> 10) & 1
+
+        mac.update({
+            'tid': tid,
+            'eosp': eosp,
+            'rspi': rspi,
+            'mesh_ps': mesh_ps,
+        })
+
+    return offset, mac
