@@ -9,6 +9,9 @@
 # >>> off, mac = r.ieee80211_parse(pkt, off)
 import struct
 
+from vht import *
+
+
 mcs_rate_table = [
     (6.50, 7.20, 13.50, 15.00),
     (13.00, 14.40, 27.00, 30.00),
@@ -149,6 +152,55 @@ def _parse_mcs(packet, offset):
         'mcs_rate': mcs_rate
     }
 
+def _parse_ampdu(packet, offset):
+    """see http://www.radiotap.org/defined-fields/A-MPDU%20status
+       u32 reference number, u16 flags, u8 delimiter CRC value, u8 reserved"""
+    ampdu_refnum, ampdu_flags, ampdu_delim_crc_val, ampdu_reserved = \
+        struct.unpack_from('<LHBB', packet, offset)
+    return offset + 8, {
+        'ampdu_refnum': ampdu_refnum,
+        'ampdu_flags': ampdu_flags,
+        'ampdu_delim_crc_val': ampdu_delim_crc_val,
+        'ampdu_reserved': ampdu_reserved
+    }
+
+
+def _parse_vht(packet, offset):
+    """ see http://www.radiotap.org/defined-fields/VHT
+        u16 known, u8 flags, u8 bandwidth, u8 mcs_nss[4], u8 coding, u8 group_id, u16 partial_aid """
+    vht_known, vht_flags, vht_bw, vht_user_0, vht_user_1, vht_user_2, vht_user_3, \
+        vht_coding, vht_group_id, vht_partial_aid = struct.unpack_from('<H8BH', packet, offset)
+
+    vht_gi = vht_bandwidth = None
+    if vht_known & 0x0004:
+        # GI is known
+        vht_gi = (vht_flags & 0x04) >> 0x02
+    if vht_known & 0x0040:
+        # BW is known
+        vht_bandwidth = vht_bandwidth_lut[0x1f & vht_bw][0]
+
+    # per-user info for MIMO-MU
+    vht_per_user =  {}
+    for (i, vht_user) in enumerate([vht_user_0, vht_user_1, vht_user_2, vht_user_3]):
+        if vht_user:
+            vht_per_user[i] = {}
+            vht_nss_n =  vht_user & 0xf0 >> 4
+            vht_mcs_index_n = (vht_user & 0xf0)  >> 4
+            vht_per_user[i]['vht_coding'] = (vht_coding & 2**i) >> i
+            if not(vht_gi is None) and not(vht_bandwidth is None):
+                vht_per_user[i].update(vht_rate_description(vht_mcs_index_n,vht_nss_n,vht_gi,vht_bandwidth))
+
+    return offset + 12, {
+        'vht_known': vht_known,
+        'vht_flags': vht_flags,
+        'vht_bw': vht_bw,
+        'vht_coding': vht_coding,
+        'vht_group_id': vht_group_id,
+        'vht_gi': vht_gi,
+        'vht_bandwidth': vht_bandwidth,
+        'vht_user': vht_per_user,
+    }
+
 def _parse_radiotap_field(field_id, packet, offset):
 
     dispatch_table = [
@@ -172,6 +224,8 @@ def _parse_radiotap_field(field_id, packet, offset):
         _parse_data_retries,
         _parse_xchannel,
         _parse_mcs,
+        _parse_ampdu,
+        _parse_vht,
     ]
     if field_id >= len(dispatch_table):
         return None, {}
