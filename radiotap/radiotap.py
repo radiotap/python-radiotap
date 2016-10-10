@@ -51,6 +51,7 @@ def align(val, align):
     return (val + align - 1) & ~(align-1)
 
 def _parse_mactime(packet, offset):
+    offset = align(offset, 8)
     mactime, = struct.unpack_from('<Q', packet, offset)
     return offset + 8, {'TSFT' : mactime}
 
