@@ -202,7 +202,22 @@ def _parse_vht(packet, offset):
         'vht_user': vht_per_user,
     }
 
-def _parse_radiotap_field(field_id, packet, offset):
+def _parse_vendor(packet, offset):
+    offset = align(offset, 2)
+    oui, subns, length = struct.unpack_from("<3sBH", packet, offset)
+    offset += 6
+    return offset + length, {
+        'oui': oui,
+        'subns': subns,
+        'data': packet[offset:offset + length],
+        'present': 0
+    }
+
+def _parse_radiotap_field(namespace, field_id, packet, offset):
+
+    if namespace and namespace != 'radiotap':
+        # skipped already
+        return offset, None
 
     dispatch_table = [
         _parse_mactime,
@@ -233,10 +248,64 @@ def _parse_radiotap_field(field_id, packet, offset):
 
     return dispatch_table[field_id](packet, offset)
 
-def radiotap_parse(packet):
+def _present_bits(bitmap):
+    offset = 0
+    count = 0
+    reset_count = False
+    namespace = 'radiotap'
+    while offset < len(bitmap):
+        present, = struct.unpack_from("<I", bitmap[offset:])
+        for i in range(0, 32):
+            # reserved bits:
+            #  29 = radiotap namespace
+            #  30 = vendor namespace
+            #  31 = extended bitmap
+            if present & (1 << i):
+                if i == 29:
+                    namespace = 'radiotap'
+                    reset_count = True
+                    yield namespace, None
+                elif i == 30:
+                    namespace = 'vendor'
+                    reset_count = True
+                    yield namespace, None
+                elif i == 31:
+                    pass
+                else:
+                    yield namespace, count + i
+        if reset_count:
+            count = 0
+            reset_count = False
+        else:
+            count += 32
+        offset += 4
+
+def _add_fields(d, namespace, fields):
+    if not fields:
+        return
+
+    if isinstance(d, list):
+        d.append(fields)
+    else:
+        d.update(fields)
+
+def _add_vendor_presence_bit(d, oui, bit):
+
+    if isinstance(d, list):
+        tgt = d[-1]
+    else:
+        tgt = d[oui]
+    tgt['present'] |= 1 << bit
+
+def radiotap_parse(packet, valuelist=False):
     """
-    Parse out a the radiotap header from a packet.  Return a tuple of
-    the fields as a dict (if any) and the new offset into packet.
+    Parse out a the radiotap header from a packet.  Return a tuple
+    (offset, fields) where offset is the new offset and values
+    is a dictionary of field name to value.
+
+    If valuelist is true, every field is returned in file order as a list
+    of items rather than as a single dictionary.  This allows retrieving
+    items that are specified more than once via the namespacing feature.
     """
     radiotap_header_fmt = '<BBHI'
     radiotap_header_len = struct.calcsize(radiotap_header_fmt)
@@ -250,24 +319,33 @@ def radiotap_parse(packet):
     if version != 0 or pad != 0 or radiotap_len > len(packet):
         return 0, {}
 
-    # there may be multiple present bitmaps if high bit is set.
-    # assemble them into one large bitmap
-    count = 1
+    # skip to end of presence bitmaps
     offset = radiotap_header_len
-    while present & (1 << (32 * count - 1)):
-        present &= ~(1 << (32 * count - 1))
-        next_present, = struct.unpack_from("<I", packet[offset:])
-        present |= next_present << (32 * count)
+    present_offset = offset - 4
+    while present & (1 << 31):
+        present, = struct.unpack_from("<I", packet[offset:])
         offset += 4
-        count += 1
 
-    radiotap = {}
-    for i in range(0, 32 * count):
-        if present & (1 << i):
-            offset, fields = _parse_radiotap_field(i, packet, offset)
-            radiotap.update(fields)
-            if offset == radiotap_len or offset is None:
-                break
+    radiotap = [] if valuelist else {}
+
+    vendor_ns = None
+    for namespace, i in _present_bits(packet[present_offset:offset]):
+        if i is None:
+            # namespace switch; if vendor switch to vendor namespace
+            if namespace == 'vendor':
+                offset, fields = _parse_vendor(packet, offset)
+                vendor_ns = fields['oui']
+                _add_fields(radiotap, vendor_ns, fields)
+            continue
+
+        elif namespace == 'vendor':
+            # just track the presence bit...
+            _add_vendor_presence_bit(radiotap, vendor_ns, i)
+
+        offset, fields = _parse_radiotap_field(namespace, i, packet, offset)
+        _add_fields(radiotap, namespace, fields)
+        if offset == radiotap_len or offset is None:
+            break
 
     return radiotap_len, radiotap
 
