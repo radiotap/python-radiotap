@@ -130,8 +130,9 @@ def _parse_data_retries(packet, offset):
     return offset + 1, {'data_retries' : data_retries}
 
 def _parse_xchannel(packet, offset):
+    offset = align(offset, 4)
     xchannel_flags, xchannel_freq, xchannel_num, xchannel_maxpower = \
-        struct.unpack_from('<QHBB', packet, offset)
+        struct.unpack_from('<IHBB', packet, offset)
     return offset + 8, {
         'xchannel_flags' : xchannel_flags,
         'xchannel_freq' : xchannel_freq,
@@ -355,7 +356,7 @@ def macstr(macbytes):
 def is_blkack(mac):
     fc = mac.get('fc', 0)
     type = (fc >> 2) & 0x3
-    subtype = (fc >> 4) & 0x0f;
+    subtype = (fc >> 4) & 0x0f
 
     # control frame and block ack
     return type == 1 and subtype == 0x9
@@ -363,14 +364,14 @@ def is_blkack(mac):
 def is_qos_data(mac):
     fc = mac.get('fc', 0)
     type = (fc >> 2) & 0x3
-    subtype = (fc >> 4) & 0x0f;
+    subtype = (fc >> 4) & 0x0f
 
     return type == 2 and subtype == 0x8
 
 def is_qos_null(mac):
     fc = mac.get('fc', 0)
     type = (fc >> 2) & 0x3
-    subtype = (fc >> 4) & 0x0f;
+    subtype = (fc >> 4) & 0x0f
 
     return type == 2 and subtype == 0xc
 
