@@ -1,1 +1,1 @@
-from radiotap import radiotap_parse, ieee80211_parse
+from .radiotap import radiotap_parse, ieee80211_parse

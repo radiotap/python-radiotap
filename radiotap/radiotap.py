@@ -9,7 +9,7 @@
 # >>> off, mac = r.ieee80211_parse(pkt, off)
 import struct
 
-from vht import *
+from .vht import *
 
 
 mcs_rate_table = [
