@@ -8,11 +8,11 @@ description = "Parse Radiotap headers with Python."
 readme = "README.md"
 keywords = ["radiotap"]
 license = {file = "COPYING"}
+version = "1.0.0"
 classifiers = [
     "Programming Language :: Python :: 3",
 ]
-dynamic = ["version"]
 
 [project.urls]
 homepage = "http://www.radiotap.org/"
-Source = "https://github.com/macleays/python-radiotap"
+Source = "https://github.com/radiotap/python-radiotap"
