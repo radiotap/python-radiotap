@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "radiotap"
+description = "Parse Radiotap headers with Python."
+readme = "README.md"
+keywords = ["radiotap"]
+license = {file = "COPYING"}
+version = "1.0.0"
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+homepage = "http://www.radiotap.org/"
+Source = "https://github.com/radiotap/python-radiotap"
