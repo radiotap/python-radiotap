@@ -295,7 +295,7 @@ def _add_vendor_presence_bit(d, oui, bit):
     if isinstance(d, list):
         tgt = d[-1]
     else:
-        tgt = d[oui]
+        tgt = d
     tgt['present'] |= 1 << bit
 
 def radiotap_parse(packet, valuelist=False):
