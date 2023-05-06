@@ -281,7 +281,7 @@ def _present_bits(bitmap):
             count += 32
         offset += 4
 
-def _add_fields(d, namespace, fields):
+def _add_fields(d, fields):
     if not fields:
         return
 
@@ -290,7 +290,7 @@ def _add_fields(d, namespace, fields):
     else:
         d.update(fields)
 
-def _add_vendor_presence_bit(d, oui, bit):
+def _add_vendor_presence_bit(d, bit):
 
     if isinstance(d, list):
         tgt = d[-1]
@@ -329,22 +329,20 @@ def radiotap_parse(packet, valuelist=False):
 
     radiotap = [] if valuelist else {}
 
-    vendor_ns = None
     for namespace, i in _present_bits(packet[present_offset:offset]):
         if i is None:
             # namespace switch; if vendor switch to vendor namespace
             if namespace == 'vendor':
                 offset, fields = _parse_vendor(packet, offset)
-                vendor_ns = fields['oui']
-                _add_fields(radiotap, vendor_ns, fields)
+                _add_fields(radiotap, fields)
             continue
 
         elif namespace == 'vendor':
             # just track the presence bit...
-            _add_vendor_presence_bit(radiotap, vendor_ns, i)
+            _add_vendor_presence_bit(radiotap, i)
 
         offset, fields = _parse_radiotap_field(namespace, i, packet, offset)
-        _add_fields(radiotap, namespace, fields)
+        _add_fields(radiotap, fields)
         if offset == radiotap_len or offset is None:
             break
 
